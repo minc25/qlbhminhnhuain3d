@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Ensure tabular numbers for accounting, monetary amounts and SKU tables */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

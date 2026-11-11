@@ -1,0 +1,8 @@
+{
+  "name": "Remix Business Management System",
+  "description": "Hệ thống quản lý kinh doanh cá nhân hoàn chỉnh: Quản lý kho, Điểm bán hàng (POS), Đơn hàng, Khách hàng, Khuyến mãi, Nhập hàng, Nhà cung cấp, Sổ quỹ Thu Chi và Báo cáo tài chính.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
