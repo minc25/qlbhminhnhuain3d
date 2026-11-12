@@ -8,7 +8,11 @@ import {
   Calendar,
   X,
   CreditCard,
-  Banknote
+  Banknote,
+  Edit2,
+  Trash2,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { CashTransaction, CashDirection, CashCategory } from '../../types';
@@ -21,13 +25,19 @@ export const CashflowView: React.FC = () => {
   const [directionFilter, setDirectionFilter] = useState<string>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
 
-  // Modal
+  // Modal create/edit
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState<CashTransaction | null>(null);
   const [direction, setDirection] = useState<CashDirection>('OUT');
   const [category, setCategory] = useState<CashCategory>('RENT');
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState('TIEN_MAT');
   const [notes, setNotes] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Delete modal
+  const [txToDelete, setTxToDelete] = useState<CashTransaction | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadData = async () => {
     try {
@@ -49,27 +59,75 @@ export const CashflowView: React.FC = () => {
     loadData();
   }, [directionFilter, categoryFilter]);
 
-  const handleCreateVoucher = async (e: React.FormEvent) => {
+  const openCreateModal = () => {
+    setEditingTx(null);
+    setDirection('OUT');
+    setCategory('RENT');
+    setAmount(0);
+    setPaymentMethod('TIEN_MAT');
+    setNotes('');
+    setFormError(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditTx = (tx: CashTransaction) => {
+    setEditingTx(tx);
+    setDirection(tx.direction);
+    setCategory(tx.category);
+    setAmount(tx.amount);
+    setPaymentMethod(tx.payment_method);
+    setNotes(tx.notes || '');
+    setFormError(null);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveVoucher = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     if (!amount || amount <= 0) {
-      alert('Vui lòng nhập số tiền hợp lệ (> 0)');
+      setFormError('Vui lòng nhập số tiền hợp lệ (> 0)');
       return;
     }
 
     try {
-      await api.createCashTransaction({
-        direction,
-        category,
-        amount,
-        payment_method: paymentMethod as any,
-        notes
-      });
+      if (editingTx) {
+        await api.updateCashTransaction(editingTx.id, {
+          direction,
+          category,
+          amount,
+          payment_method: paymentMethod as any,
+          notes
+        });
+      } else {
+        await api.createCashTransaction({
+          direction,
+          category,
+          amount,
+          payment_method: paymentMethod as any,
+          notes
+        });
+      }
       setIsModalOpen(false);
+      setEditingTx(null);
       setAmount(0);
       setNotes('');
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Lỗi khi tạo phiếu thu chi');
+      setFormError(err.message || 'Lỗi khi lưu phiếu thu chi');
+    }
+  };
+
+  const handleDeleteTx = async () => {
+    if (!txToDelete) return;
+    try {
+      setIsDeleting(true);
+      await api.deleteCashTransaction(txToDelete.id);
+      setTxToDelete(null);
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Không thể xóa phiếu');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -110,11 +168,7 @@ export const CashflowView: React.FC = () => {
         </div>
 
         <button
-          onClick={() => {
-            setDirection('OUT');
-            setCategory('RENT');
-            setIsModalOpen(true);
-          }}
+          onClick={openCreateModal}
           className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -203,6 +257,7 @@ export const CashflowView: React.FC = () => {
                 <th className="py-3 px-4 font-semibold">Danh Mục</th>
                 <th className="py-3 px-4 font-semibold">Ghi Chú</th>
                 <th className="py-3 px-4 font-semibold text-right">Số Tiền (VND)</th>
+                <th className="py-3 px-4 font-semibold text-center">Thao Tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -241,12 +296,30 @@ export const CashflowView: React.FC = () => {
                       {formatVND(tx.amount)}
                     </span>
                   </td>
+                  <td className="py-3 px-4 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={() => openEditTx(tx)}
+                        title="Chỉnh sửa phiếu"
+                        className="p-1 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setTxToDelete(tx)}
+                        title="Xóa phiếu"
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
 
               {transactions.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400 text-xs">
+                  <td colSpan={7} className="py-12 text-center text-slate-400 text-xs">
                     Chưa có giao dịch thu chi nào
                   </td>
                 </tr>
@@ -262,14 +335,20 @@ export const CashflowView: React.FC = () => {
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                Lập Phiếu Thu / Chi Quỹ
+                {editingTx ? `Chỉnh Sửa Phiếu ${editingTx.code}` : 'Lập Phiếu Thu / Chi Quỹ'}
               </h2>
               <button onClick={() => setIsModalOpen(false)} className="p-1 text-slate-400">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateVoucher} className="space-y-3">
+            {formError && (
+              <div className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-[11px] font-semibold">
+                {formError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveVoucher} className="space-y-3">
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Loại Giao Dịch
@@ -388,10 +467,56 @@ export const CashflowView: React.FC = () => {
                   type="submit"
                   className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 font-semibold rounded-lg"
                 >
-                  Ghi Sổ Quỹ
+                  {editingTx ? 'Lưu Cập Nhật' : 'Ghi Sổ Quỹ'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {txToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Xóa phiếu thu / chi
+                </h3>
+                <p className="text-slate-500 mt-1">
+                  Bạn có chắc muốn xóa phiếu <strong className="font-mono text-slate-900 dark:text-slate-100">{txToDelete.code}</strong> ({formatVND(txToDelete.amount)})?
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+              <div>Danh mục: <strong>{getCategoryLabel(txToDelete.category)}</strong></div>
+              <div>Ghi chú: {txToDelete.notes || 'Không có'}</div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setTxToDelete(null)}
+                disabled={isDeleting}
+                className="flex-1 py-2 border border-slate-200 dark:border-slate-700 rounded-lg font-semibold"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteTx}
+                disabled={isDeleting}
+                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Xác nhận xóa</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -386,6 +386,35 @@ apiRouter.put('/customers/:id', (req: Request, res: Response) => {
   res.json(updated);
 });
 
+apiRouter.delete('/customers/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const current = db.prepare('SELECT * FROM customers WHERE id = ?').get(id) as any;
+  if (!current) return res.status(404).json({ error: 'Khách hàng không tồn tại' });
+
+  try {
+    const deleteTx = db.transaction(() => {
+      // Temporarily disable foreign keys so orders preserve historical customer name/phone snapshots
+      db.pragma('foreign_keys = OFF');
+
+      // Unlink customer from historical orders (snapshots remain intact)
+      db.prepare('UPDATE sales_orders SET customer_id = NULL WHERE customer_id = ?').run(id);
+
+      // Delete customer record
+      db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+
+      // Re-enable foreign keys
+      db.pragma('foreign_keys = ON');
+    });
+
+    deleteTx();
+    res.json({ success: true, message: `Đã xóa khách hàng "${current.name}" thành công` });
+  } catch (err: any) {
+    db.pragma('foreign_keys = ON');
+    console.error('Lỗi khi xóa khách hàng:', err);
+    res.status(500).json({ error: `Không thể xóa khách hàng: ${err.message}` });
+  }
+});
+
 // ----------------------------------------------------
 // Suppliers Routes
 // ----------------------------------------------------
@@ -545,6 +574,15 @@ apiRouter.put('/promotions/:id', (req: Request, res: Response) => {
 
   const updated = db.prepare('SELECT * FROM promotions WHERE id = ?').get(id);
   res.json(updated);
+});
+
+apiRouter.delete('/promotions/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const current = db.prepare('SELECT * FROM promotions WHERE id = ?').get(id) as any;
+  if (!current) return res.status(404).json({ error: 'Khuyến mãi không tồn tại' });
+
+  db.prepare('DELETE FROM promotions WHERE id = ?').run(id);
+  res.json({ success: true, message: `Đã xóa khuyến mãi "${current.name}" thành công` });
 });
 
 // Calculate promotion for cart on backend
@@ -1006,6 +1044,92 @@ apiRouter.post('/orders/:id/returns', (req: Request, res: Response) => {
   res.json({ success: true, returnCode, message: 'Đã lập phiếu hoàn hàng và nhập lại tồn kho' });
 });
 
+// Delete Order Permanently (Hard Delete from system)
+apiRouter.delete('/orders/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const order = db.prepare('SELECT * FROM sales_orders WHERE id = ?').get(id) as any;
+  if (!order) return res.status(404).json({ error: 'Đơn hàng không tồn tại' });
+
+  try {
+    const deleteOrderTx = db.transaction(() => {
+      // Temporarily disable foreign keys
+      db.pragma('foreign_keys = OFF');
+
+      const now = new Date().toISOString();
+      const items = db.prepare('SELECT * FROM sales_order_items WHERE order_id = ?').all(id) as any[];
+
+      // 1. If order was active (not CANCELLED or RETURNED), automatically restore inventory stock
+      if (order.status !== 'CANCELLED' && order.status !== 'RETURNED') {
+        for (const it of items) {
+          const prod = db.prepare('SELECT stock_quantity, cost_price FROM products WHERE id = ?').get(it.product_id) as any;
+          if (prod) {
+            const newStock = prod.stock_quantity + it.quantity;
+            db.prepare('UPDATE products SET stock_quantity = ?, updated_at = ? WHERE id = ?').run(newStock, now, it.product_id);
+
+            db.prepare(`
+              INSERT INTO inventory_movements (
+                id, product_id, movement_type, quantity_change,
+                quantity_before, quantity_after, reference_id, reason,
+                cost_at_time, created_at
+              ) VALUES (?, ?, 'ADJUSTMENT_IN', ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              genId('mov'), it.product_id, it.quantity,
+              prod.stock_quantity, newStock, id,
+              `Hoàn kho do xóa vĩnh viễn đơn hàng ${order.order_code}`,
+              it.unit_cost_snapshot || prod.cost_price, now
+            );
+          }
+        }
+      }
+
+      // 2. Revert customer debt and total spent if customer was linked
+      if (order.customer_id) {
+        const cust = db.prepare('SELECT * FROM customers WHERE id = ?').get(order.customer_id) as any;
+        if (cust) {
+          const newOrders = Math.max(0, cust.total_orders - 1);
+          const newSpent = Math.max(0, cust.total_spent - (order.status !== 'CANCELLED' ? order.total_amount : 0));
+          const newPaid = Math.max(0, cust.total_paid - order.paid_amount);
+          const newDebt = Math.max(0, cust.current_debt - order.debt_amount);
+
+          db.prepare(`
+            UPDATE customers
+            SET total_orders = ?, total_spent = ?, total_paid = ?, current_debt = ?
+            WHERE id = ?
+          `).run(newOrders, newSpent, newPaid, newDebt, order.customer_id);
+        }
+      }
+
+      // 3. Delete cash transactions linked to this order
+      db.prepare(`
+        DELETE FROM cash_transactions
+        WHERE reference_id = ? OR code = ? OR code LIKE ?
+      `).run(id, `PT-${order.order_code}`, `%${order.order_code}%`);
+
+      // 4. Delete inventory movements associated with this order
+      db.prepare('DELETE FROM inventory_movements WHERE reference_id = ? AND movement_type = ?').run(id, 'SALE');
+
+      // 5. Delete order items
+      db.prepare('DELETE FROM sales_order_items WHERE order_id = ?').run(id);
+
+      // 6. Delete the order record permanently
+      db.prepare('DELETE FROM sales_orders WHERE id = ?').run(id);
+
+      // 7. Delete audit logs referencing this order
+      db.prepare('DELETE FROM audit_logs WHERE entity_id = ?').run(id);
+
+      // Re-enable foreign keys
+      db.pragma('foreign_keys = ON');
+    });
+
+    deleteOrderTx();
+    res.json({ success: true, message: `Đã xóa vĩnh viễn đơn hàng ${order.order_code} khỏi hệ thống` });
+  } catch (err: any) {
+    db.pragma('foreign_keys = ON');
+    console.error('Lỗi khi xóa đơn hàng:', err);
+    res.status(500).json({ error: `Không thể xóa đơn hàng: ${err.message}` });
+  }
+});
+
 // ----------------------------------------------------
 // Purchases & Suppliers (Weighted Average Costing Rule)
 // ----------------------------------------------------
@@ -1195,6 +1319,44 @@ apiRouter.post('/cash-transactions', (req: Request, res: Response) => {
 
   const created = db.prepare('SELECT * FROM cash_transactions WHERE id = ?').get(id);
   res.status(201).json(created);
+});
+
+apiRouter.put('/cash-transactions/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { direction, category, amount, payment_method, notes, receipt_image_url } = req.body;
+  const current = db.prepare('SELECT * FROM cash_transactions WHERE id = ?').get(id) as any;
+  if (!current) return res.status(404).json({ error: 'Phiếu thu/chi không tồn tại' });
+
+  const numAmount = amount !== undefined ? Math.round(Number(amount)) : current.amount;
+  if (numAmount <= 0) {
+    return res.status(400).json({ error: 'Số tiền phải lớn hơn 0' });
+  }
+
+  db.prepare(`
+    UPDATE cash_transactions
+    SET direction = ?, category = ?, amount = ?, payment_method = ?, notes = ?, receipt_image_url = ?
+    WHERE id = ?
+  `).run(
+    direction || current.direction,
+    category || current.category,
+    numAmount,
+    payment_method || current.payment_method,
+    notes !== undefined ? notes : current.notes,
+    receipt_image_url !== undefined ? receipt_image_url : current.receipt_image_url,
+    id
+  );
+
+  const updated = db.prepare('SELECT * FROM cash_transactions WHERE id = ?').get(id);
+  res.json(updated);
+});
+
+apiRouter.delete('/cash-transactions/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const current = db.prepare('SELECT * FROM cash_transactions WHERE id = ?').get(id) as any;
+  if (!current) return res.status(404).json({ error: 'Phiếu thu/chi không tồn tại' });
+
+  db.prepare('DELETE FROM cash_transactions WHERE id = ?').run(id);
+  res.json({ success: true, message: `Đã xóa phiếu ${current.code} thành công` });
 });
 
 // Helper to build date SQL conditions for dashboard queries
@@ -1415,7 +1577,9 @@ apiRouter.post('/upload', async (req: Request, res: Response) => {
       .slice(0, 35);
     const uniqueName = `${safeBase}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
 
-    const uploadsDir = path.resolve(process.cwd(), 'uploads');
+    const uploadsDir = process.env.UPLOADS_DIR
+      ? path.resolve(process.env.UPLOADS_DIR)
+      : path.resolve(process.cwd(), 'uploads');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }

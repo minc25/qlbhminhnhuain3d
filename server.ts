@@ -17,7 +17,9 @@ async function startServer() {
   initDatabase();
 
   // Ensure uploads directory exists on server / Railway persistent storage
-  const uploadsDir = path.resolve(__dirname, 'uploads');
+  const uploadsDir = process.env.UPLOADS_DIR
+    ? path.resolve(process.env.UPLOADS_DIR)
+    : path.resolve(__dirname, 'uploads');
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }

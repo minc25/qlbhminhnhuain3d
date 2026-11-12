@@ -74,6 +74,14 @@ class CashTransactionCreate(BaseModel):
     notes: Optional[str] = None
     receipt_image_url: Optional[str] = None
 
+class CashTransactionUpdate(BaseModel):
+    direction: Optional[str] = None
+    category: Optional[str] = None
+    amount: Optional[int] = None
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+    receipt_image_url: Optional[str] = None
+
 class UploadImageRequest(BaseModel):
     data: str  # Base64 data URL or raw base64 string
     filename: Optional[str] = None

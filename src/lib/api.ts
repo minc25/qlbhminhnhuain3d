@@ -113,6 +113,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     }).then(r => handleResponse<Customer>(r)),
+  deleteCustomer: (id: string) =>
+    fetch(`${BASE_URL}/customers/${id}`, { method: 'DELETE' }).then(r => handleResponse<{ success: boolean; message: string }>(r)),
 
   // Suppliers
   getSuppliers: () => fetch(`${BASE_URL}/suppliers`).then(r => handleResponse<Supplier[]>(r)),
@@ -150,6 +152,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     }).then(r => handleResponse<Promotion>(r)),
+  deletePromotion: (id: string) =>
+    fetch(`${BASE_URL}/promotions/${id}`, { method: 'DELETE' }).then(r => handleResponse<{ success: boolean; message: string }>(r)),
   evaluatePromotion: (items: any[], selectedPromoId?: string) =>
     fetch(`${BASE_URL}/promotions/evaluate`, {
       method: 'POST',
@@ -189,6 +193,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ return_items, reason, refund_amount })
     }).then(r => handleResponse<any>(r)),
+  deleteOrder: (id: string) =>
+    fetch(`${BASE_URL}/orders/${id}`, { method: 'DELETE' }).then(r => handleResponse<{ success: boolean; message: string }>(r)),
 
   // Purchases
   getPurchases: () => fetch(`${BASE_URL}/purchases`).then(r => handleResponse<PurchaseReceipt[]>(r)),
@@ -216,6 +222,14 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     }).then(r => handleResponse<CashTransaction>(r)),
+  updateCashTransaction: (id: string, data: Partial<CashTransaction>) =>
+    fetch(`${BASE_URL}/cash-transactions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }).then(r => handleResponse<CashTransaction>(r)),
+  deleteCashTransaction: (id: string) =>
+    fetch(`${BASE_URL}/cash-transactions/${id}`, { method: 'DELETE' }).then(r => handleResponse<{ success: boolean; message: string }>(r)),
 
   // Dashboard
   getDashboardSummary: (params?: string | {

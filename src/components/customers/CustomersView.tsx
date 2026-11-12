@@ -8,8 +8,11 @@ import {
   FileText,
   Eye,
   Edit2,
+  Trash2,
   X,
-  CreditCard
+  CreditCard,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Customer } from '../../types';
@@ -24,6 +27,10 @@ export const CustomersView: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+
+  // Delete modal state
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadCustomers = async () => {
     try {
@@ -69,6 +76,20 @@ export const CustomersView: React.FC = () => {
       setSelectedCustomer(full);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDeleteCustomer = async () => {
+    if (!customerToDelete) return;
+    try {
+      setIsDeleting(true);
+      await api.deleteCustomer(customerToDelete.id);
+      setCustomerToDelete(null);
+      loadCustomers();
+    } catch (err: any) {
+      alert(err.message || 'Không thể xóa khách hàng');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -172,6 +193,13 @@ export const CustomersView: React.FC = () => {
                         className="p-1 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setCustomerToDelete(c)}
+                        title="Xóa khách hàng"
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </td>
@@ -358,6 +386,58 @@ export const CustomersView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Customer Confirmation Modal */}
+      {customerToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Xóa khách hàng
+                </h3>
+                <p className="text-slate-500 mt-1">
+                  Bạn có chắc muốn xóa khách hàng <strong className="text-slate-900 dark:text-slate-100">{customerToDelete.name}</strong> ({customerToDelete.phone})?
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+              <div>Số đơn đã mua: <strong>{customerToDelete.total_orders}</strong></div>
+              <div>Tổng chi tiêu: <strong>{formatVND(customerToDelete.total_spent)}</strong></div>
+              {customerToDelete.current_debt > 0 && (
+                <div className="text-rose-600 font-semibold">Công nợ hiện tại: {formatVND(customerToDelete.current_debt)}</div>
+              )}
+              <div className="text-[10px] text-slate-400 pt-1">
+                Lưu ý: Lịch sử các đơn hàng cũ vẫn được bảo lưu an toàn dưới dạng snapshot độc lập.
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setCustomerToDelete(null)}
+                disabled={isDeleting}
+                className="flex-1 py-2 border border-slate-200 dark:border-slate-700 rounded-lg font-semibold"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteCustomer}
+                disabled={isDeleting}
+                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Xác nhận xóa</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

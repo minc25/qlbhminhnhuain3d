@@ -115,6 +115,19 @@ def get_customer_by_phone(phone: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Customer not found")
     return cust
 
+@app.delete("/api/v1/customers/{id}", tags=["Customers"])
+def delete_customer(id: str, db: Session = Depends(get_db)):
+    cust = db.query(models.Customer).filter(models.Customer.id == id).first()
+    if not cust:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    # Nullify customer_id in sales orders so historical receipts are preserved
+    db.query(models.SalesOrder).filter(models.SalesOrder.customer_id == id).update({"customer_id": None}, synchronize_session=False)
+    
+    db.delete(cust)
+    db.commit()
+    return {"success": True, "message": f"Customer {cust.name} deleted successfully"}
+
 # ----------------- Orders / POS -----------------
 @app.post("/api/v1/orders", status_code=status.HTTP_201_CREATED, tags=["Orders"])
 def create_sales_order(order_in: schemas.OrderCreate, db: Session = Depends(get_db)):

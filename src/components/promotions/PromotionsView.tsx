@@ -3,11 +3,14 @@ import {
   Tag,
   Plus,
   Edit2,
+  Trash2,
   Calendar,
   CheckCircle2,
   XCircle,
   X,
-  Sparkles
+  Sparkles,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Promotion, PromotionType } from '../../types';
@@ -18,6 +21,10 @@ export const PromotionsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<Promotion | null>(null);
+
+  // Delete modal state
+  const [promoToDelete, setPromoToDelete] = useState<Promotion | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form fields
   const [promoType, setPromoType] = useState<PromotionType>('PERCENTAGE');
@@ -46,6 +53,32 @@ export const PromotionsView: React.FC = () => {
       loadPromos();
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const openCreateModal = () => {
+    setEditingPromo(null);
+    setPromoType('PERCENTAGE');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (promo: Promotion) => {
+    setEditingPromo(promo);
+    setPromoType(promo.type);
+    setIsModalOpen(true);
+  };
+
+  const handleDeletePromo = async () => {
+    if (!promoToDelete) return;
+    try {
+      setIsDeleting(true);
+      await api.deletePromotion(promoToDelete.id);
+      setPromoToDelete(null);
+      loadPromos();
+    } catch (err: any) {
+      alert(err.message || 'Không thể xóa chương trình khuyến mãi');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -149,11 +182,7 @@ export const PromotionsView: React.FC = () => {
         </div>
 
         <button
-          onClick={() => {
-            setEditingPromo(null);
-            setPromoType('PERCENTAGE');
-            setIsModalOpen(true);
-          }}
+          onClick={openCreateModal}
           className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -180,14 +209,32 @@ export const PromotionsView: React.FC = () => {
             >
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="font-semibold text-sky-600 dark:text-sky-400">
-                    {getTypeName(p.type)}
-                  </span>
-                  {p.code && (
-                    <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-bold">
-                      {p.code}
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sky-600 dark:text-sky-400">
+                      {getTypeName(p.type)}
                     </span>
-                  )}
+                    {p.code && (
+                      <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-bold">
+                        {p.code}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEditModal(p)}
+                      title="Sửa chương trình"
+                      className="p-1 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setPromoToDelete(p)}
+                      title="Xóa chương trình"
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-2">
@@ -300,70 +347,81 @@ export const PromotionsView: React.FC = () => {
               </div>
 
               {/* Dynamic Type Fields */}
-              <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-2.5">
-                {promoType === 'PERCENTAGE' && (
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Phần trăm giảm (%)</label>
-                      <input name="percentage" type="number" min="1" max="100" defaultValue="10" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Đơn tối thiểu (VND)</label>
-                      <input name="min_order_amount" type="number" step="10000" defaultValue="1000000" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Giảm tối đa (VND)</label>
-                      <input name="max_discount" type="number" step="10000" defaultValue="200000" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
-                  </div>
-                )}
+              {(() => {
+                let editingConfig: any = {};
+                if (editingPromo?.config) {
+                  try {
+                    editingConfig = typeof editingPromo.config === 'string' ? JSON.parse(editingPromo.config) : editingPromo.config;
+                  } catch {}
+                }
 
-                {promoType === 'FIXED_AMOUNT' && (
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số tiền giảm trừ mỗi cuộn (VND)</label>
-                    <input name="fixed_discount_per_unit" type="number" step="1000" defaultValue="5000" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                  </div>
-                )}
+                return (
+                  <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                    {promoType === 'PERCENTAGE' && (
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Phần trăm giảm (%)</label>
+                          <input name="percentage" type="number" min="1" max="100" defaultValue={editingConfig.percentage ?? 10} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Đơn tối thiểu (VND)</label>
+                          <input name="min_order_amount" type="number" step="10000" defaultValue={editingConfig.min_order_amount ?? 1000000} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Giảm tối đa (VND)</label>
+                          <input name="max_discount" type="number" step="10000" defaultValue={editingConfig.max_discount ?? 200000} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                      </div>
+                    )}
 
-                {promoType === 'TIER_QUANTITY' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số lượng tối thiểu (Cuộn)</label>
-                      <input name="min_quantity" type="number" min="1" defaultValue="5" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số tiền giảm (VND)</label>
-                      <input name="discount_amount" type="number" step="10000" defaultValue="50000" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
-                  </div>
-                )}
+                    {promoType === 'FIXED_AMOUNT' && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số tiền giảm trừ mỗi cuộn (VND)</label>
+                        <input name="fixed_discount_per_unit" type="number" step="1000" defaultValue={editingConfig.fixed_discount_per_unit ?? 5000} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                      </div>
+                    )}
 
-                {promoType === 'COMBO' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số lượng cuộn trong Combo</label>
-                      <input name="required_quantity" type="number" min="2" defaultValue="5" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Giá trọn gói Combo (VND)</label>
-                      <input name="combo_fixed_price" type="number" step="10000" defaultValue="900000" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
-                  </div>
-                )}
+                    {promoType === 'TIER_QUANTITY' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số lượng tối thiểu (Cuộn)</label>
+                          <input name="min_quantity" type="number" min="1" defaultValue={editingConfig.min_quantity ?? 5} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số tiền giảm (VND)</label>
+                          <input name="discount_amount" type="number" step="10000" defaultValue={editingConfig.discount_amount ?? 50000} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                      </div>
+                    )}
 
-                {promoType === 'BUY_X_GET_Y' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số lượng Mua (X)</label>
-                      <input name="buy_qty" type="number" min="1" defaultValue="5" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số lượng Tặng Miễn Phí (Y)</label>
-                      <input name="get_qty" type="number" min="1" defaultValue="1" className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
-                    </div>
+                    {promoType === 'COMBO' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số lượng cuộn trong Combo</label>
+                          <input name="required_quantity" type="number" min="2" defaultValue={editingConfig.required_quantity ?? 5} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Giá trọn gói Combo (VND)</label>
+                          <input name="combo_fixed_price" type="number" step="10000" defaultValue={editingConfig.combo_fixed_price ?? 900000} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                      </div>
+                    )}
+
+                    {promoType === 'BUY_X_GET_Y' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số lượng Mua (X)</label>
+                          <input name="buy_qty" type="number" min="1" defaultValue={editingConfig.buy_qty ?? 5} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Số lượng Tặng Miễn Phí (Y)</label>
+                          <input name="get_qty" type="number" min="1" defaultValue={editingConfig.get_qty ?? 1} className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border rounded" />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -374,7 +432,7 @@ export const PromotionsView: React.FC = () => {
                     name="start_date"
                     type="date"
                     required
-                    defaultValue={new Date().toISOString().split('T')[0]}
+                    defaultValue={editingPromo ? editingPromo.start_date.split('T')[0] : new Date().toISOString().split('T')[0]}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none"
                   />
                 </div>
@@ -386,7 +444,7 @@ export const PromotionsView: React.FC = () => {
                     name="end_date"
                     type="date"
                     required
-                    defaultValue="2026-12-31"
+                    defaultValue={editingPromo ? editingPromo.end_date.split('T')[0] : '2026-12-31'}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none"
                   />
                 </div>
@@ -404,10 +462,57 @@ export const PromotionsView: React.FC = () => {
                   type="submit"
                   className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 font-semibold rounded-lg"
                 >
-                  Lưu Chương Trình
+                  {editingPromo ? 'Lưu Cập Nhật' : 'Lưu Chương Trình'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {promoToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Xóa chương trình khuyến mãi
+                </h3>
+                <p className="text-slate-500 mt-1">
+                  Bạn có chắc muốn xóa chương trình <strong className="text-slate-900 dark:text-slate-100">{promoToDelete.name}</strong>?
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+              <div>Hình thức: <strong>{getTypeName(promoToDelete.type)}</strong></div>
+              {promoToDelete.code && <div>Mã code: <span className="font-mono font-bold">{promoToDelete.code}</span></div>}
+              <div>Thời gian: {formatDateOnly(promoToDelete.start_date)} - {formatDateOnly(promoToDelete.end_date)}</div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPromoToDelete(null)}
+                disabled={isDeleting}
+                className="flex-1 py-2 border border-slate-200 dark:border-slate-700 rounded-lg font-semibold"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleDeletePromo}
+                disabled={isDeleting}
+                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Xác nhận xóa</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

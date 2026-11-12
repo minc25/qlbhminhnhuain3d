@@ -10,7 +10,10 @@ import {
   Printer,
   X,
   AlertCircle,
-  FileText
+  FileText,
+  Trash2,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { SalesOrder, OrderStatus } from '../../types';
@@ -21,6 +24,10 @@ export const OrdersView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  // Delete modal state
+  const [orderToDelete, setOrderToDelete] = useState<SalesOrder | null>(null);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
 
   // Modals state
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null);
@@ -92,6 +99,25 @@ export const OrdersView: React.FC = () => {
       loadOrders();
     } catch (err: any) {
       showToast('error', err.message || 'Lỗi khi hủy đơn');
+    }
+  };
+
+  // Permanent Delete Order
+  const handleDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    try {
+      setIsDeletingOrder(true);
+      await api.deleteOrder(orderToDelete.id);
+      showToast('success', `Đã xóa vĩnh viễn đơn hàng ${orderToDelete.order_code} khỏi hệ thống`);
+      if (selectedOrder?.id === orderToDelete.id) {
+        setSelectedOrder(null);
+      }
+      setOrderToDelete(null);
+      loadOrders();
+    } catch (err: any) {
+      showToast('error', err.message || 'Lỗi khi xóa đơn hàng');
+    } finally {
+      setIsDeletingOrder(false);
     }
   };
 
@@ -329,6 +355,14 @@ export const OrdersView: React.FC = () => {
                           <XCircle className="w-3.5 h-3.5" />
                         </button>
                       )}
+
+                      <button
+                        onClick={() => setOrderToDelete(o)}
+                        title="Xóa vĩnh viễn đơn hàng khỏi hệ thống"
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -459,6 +493,13 @@ export const OrdersView: React.FC = () => {
                 className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Printer className="w-4 h-4" /> In Hóa Đơn
+              </button>
+              <button
+                onClick={() => setOrderToDelete(selectedOrder)}
+                className="py-2.5 px-3 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors border border-rose-200 dark:border-rose-900"
+                title="Xóa vĩnh viễn đơn hàng này"
+              >
+                <Trash2 className="w-4 h-4" /> Xóa Đơn
               </button>
             </div>
           </div>
@@ -668,6 +709,66 @@ export const OrdersView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Order Confirmation Modal */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/50 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/60 rounded-xl border border-rose-200 dark:border-rose-900/50">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">
+                  Xóa Vĩnh Viễn Đơn Hàng?
+                </h3>
+                <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                  Hành động này sẽ mất hẳn đơn khỏi hệ thống
+                </p>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-600 dark:text-slate-300 space-y-2 bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+              <p>
+                Bạn có chắc chắn muốn xóa vĩnh viễn đơn hàng <strong className="font-mono text-slate-900 dark:text-slate-100">{orderToDelete.order_code}</strong> (Khách: {orderToDelete.customer_name})?
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-500 text-[11px]">
+                <li>Hủy và xóa toàn bộ sản phẩm trong đơn, tự động hoàn trả số lượng vào kho tồn.</li>
+                <li>Xóa toàn bộ chứng từ thanh toán/thu tiền liên quan trong sổ quỹ thu chi.</li>
+                <li>Khấu trừ doanh số, số đơn và công nợ khỏi hồ sơ khách hàng.</li>
+                <li>Đơn hàng sẽ biến mất hoàn toàn và không thể khôi phục.</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                disabled={isDeletingOrder}
+                onClick={() => setOrderToDelete(null)}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingOrder}
+                onClick={handleDeleteOrder}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm shadow-rose-600/30"
+              >
+                {isDeletingOrder ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang xóa...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" /> Xác Nhận Xóa Vĩnh Viễn
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

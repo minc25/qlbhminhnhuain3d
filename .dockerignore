@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.gitignore
+uploads/*
+!uploads/.gitkeep
+data/*
+!data/.gitkeep
+railway_export
+*.log
+.DS_Store
